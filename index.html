@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Subject Facts + Summary (Ollama)</title>
+    <style>
+      :root {
+        --panel: #ffffff;
+        --text: #122033;
+        --accent: #0f6db3;
+        --border: #d8e3f0;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background: linear-gradient(135deg, #eef4fb 0%, #f9fbff 60%, #eaf4f5 100%);
+        color: var(--text);
+      }
+
+      .container {
+        max-width: 900px;
+        margin: 40px auto;
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 24px;
+        box-shadow: 0 14px 34px rgba(18, 32, 51, 0.08);
+      }
+
+      h1 {
+        margin-top: 0;
+        font-size: 1.7rem;
+      }
+
+      p {
+        margin-top: 0;
+      }
+
+      .grid {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: 1fr;
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      label {
+        font-weight: 600;
+      }
+
+      input,
+      textarea {
+        width: 100%;
+        border: 1px solid #c8d7ea;
+        border-radius: 10px;
+        padding: 12px;
+        font: inherit;
+      }
+
+      textarea {
+        min-height: 180px;
+        resize: vertical;
+      }
+
+      button {
+        margin-top: 12px;
+        border: 0;
+        border-radius: 10px;
+        background: var(--accent);
+        color: white;
+        padding: 10px 16px;
+        font: inherit;
+        cursor: pointer;
+      }
+
+      button:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
+      }
+
+      .results {
+        margin-top: 20px;
+        display: grid;
+        grid-template-columns: 1fr;
+        gap: 14px;
+      }
+
+      .card {
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        padding: 14px;
+        background: #fbfdff;
+      }
+
+      .label {
+        margin: 0 0 8px;
+        font-weight: 700;
+      }
+
+      .muted {
+        color: #5b697a;
+      }
+
+      .hint {
+        margin-top: 8px;
+        font-size: 0.92rem;
+        color: #4e5f74;
+      }
+
+      @media (min-width: 768px) {
+        .grid {
+          grid-template-columns: 2fr 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="container">
+      <h1>Subject Facts + Summary</h1>
+      <p class="muted">Static frontend using Ollama directly.</p>
+
+      <div class="grid">
+        <div class="field">
+          <label for="ollamaUrl">Ollama Base URL</label>
+          <input id="ollamaUrl" value="http://127.0.0.1:11434" />
+        </div>
+        <div class="field">
+          <label for="modelName">Model</label>
+          <input id="modelName" value="gemma3:270m" />
+        </div>
+      </div>
+
+      <div class="field" style="margin-top: 12px">
+        <label for="inputText">Subject Text</label>
+        <textarea id="inputText" placeholder="Enter text about a person, topic, or event..."></textarea>
+      </div>
+
+      <button id="analyzeBtn">Analyze</button>
+      <div class="hint">
+        For GitHub Pages, Ollama must be exposed on an HTTPS URL (not plain localhost HTTP).
+      </div>
+
+      <section class="results">
+        <article class="card">
+          <h2 class="label">Summary</h2>
+          <div id="summaryOutput" class="muted">No summary yet.</div>
+        </article>
+        <article class="card">
+          <h2 class="label">Facts</h2>
+          <ul id="factsOutput" class="muted">
+            <li>No facts yet.</li>
+          </ul>
+        </article>
+      </section>
+    </main>
+
+    <script>
+      const promptTemplate = `You are a helpful assistant.
+Given the subject text below, produce:
+1) A short summary (2-4 sentences)
+2) Three interesting facts
+
+Subject text:
+{{TEXT}}
+
+Return exactly this format:
+SUMMARY:
+<summary>
+FACTS:
+- <fact 1>
+- <fact 2>
+- <fact 3>`;
+
+      const ollamaUrl = document.getElementById("ollamaUrl");
+      const modelName = document.getElementById("modelName");
+      const inputText = document.getElementById("inputText");
+      const analyzeBtn = document.getElementById("analyzeBtn");
+      const summaryOutput = document.getElementById("summaryOutput");
+      const factsOutput = document.getElementById("factsOutput");
+
+      function renderFacts(facts) {
+        factsOutput.innerHTML = "";
+        if (!facts || facts.length === 0) {
+          const li = document.createElement("li");
+          li.textContent = "No facts returned.";
+          factsOutput.appendChild(li);
+          return;
+        }
+        facts.forEach((fact) => {
+          const li = document.createElement("li");
+          li.textContent = fact;
+          factsOutput.appendChild(li);
+        });
+      }
+
+      function parseModelText(text) {
+        const lines = (text || "").split("\n");
+        let summary = "";
+        const facts = [];
+        let mode = "";
+
+        for (const raw of lines) {
+          const line = raw.trim();
+          if (!line) continue;
+
+          if (line.toUpperCase().startsWith("SUMMARY:")) {
+            mode = "summary";
+            const first = line.split(":").slice(1).join(":").trim();
+            if (first) summary = first;
+            continue;
+          }
+
+          if (line.toUpperCase().startsWith("FACTS:")) {
+            mode = "facts";
+            continue;
+          }
+
+          if (mode === "summary") {
+            summary = `${summary} ${line}`.trim();
+          } else if (mode === "facts") {
+            if (line.startsWith("- ")) facts.push(line.slice(2).trim());
+            else facts.push(line.replace(/^\d+\.\s+/, ""));
+          }
+        }
+
+        return {
+          summary: summary || text || "No summary returned.",
+          facts,
+        };
+      }
+
+      async function callOllama(baseUrl, model, text) {
+        const prompt = promptTemplate.replace("{{TEXT}}", text);
+        const response = await fetch(`${baseUrl.replace(/\/$/, "")}/api/generate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ model, prompt, stream: false }),
+        });
+
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error || "Ollama request failed.");
+        }
+
+        return data.response || "";
+      }
+
+      analyzeBtn.addEventListener("click", async () => {
+        const baseUrl = ollamaUrl.value.trim();
+        const model = modelName.value.trim();
+        const text = inputText.value.trim();
+
+        if (!baseUrl || !model || !text) {
+          summaryOutput.textContent = "Please provide Ollama URL, model, and text.";
+          renderFacts([]);
+          return;
+        }
+
+        analyzeBtn.disabled = true;
+        analyzeBtn.textContent = "Analyzing...";
+        summaryOutput.textContent = "Working...";
+        renderFacts([]);
+
+        try {
+          const raw = await callOllama(baseUrl, model, text);
+          const parsed = parseModelText(raw);
+          summaryOutput.textContent = parsed.summary;
+          renderFacts(parsed.facts);
+        } catch (error) {
+          summaryOutput.textContent = `Error: ${error.message}`;
+          renderFacts([]);
+        } finally {
+          analyzeBtn.disabled = false;
+          analyzeBtn.textContent = "Analyze";
+        }
+      });
+    </script>
+  </body>
+</html>
