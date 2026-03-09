@@ -32,7 +32,7 @@ agent = create_agent(
 
 def main():
     result = agent.invoke({
-        "messages": [HumanMessage(content="What's the weather like in Tokyo?")]
+        "messages": [HumanMessage(content="Search 3 Job postings for an AI engineer in Canada and summarize the results with the job link, only get jobs from Linkedin.com.")]
     })
 
     final_answer = result["messages"][-1].content
