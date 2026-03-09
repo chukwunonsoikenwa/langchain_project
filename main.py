@@ -17,7 +17,6 @@ tavily_search_tool = TavilySearch(
 def search(query: str) -> str:
     """Search the internet for information using Tavily."""
     print(f"Searching for: {query}")
-    # invoke the TavilySearch tool
     return tavily_search_tool.invoke({"query": query})
 
 
