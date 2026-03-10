@@ -1,42 +1,51 @@
+from typing import List
+from pydantic import BaseModel, Field
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
-from langchain.tools import tool
+# from langchain.tools import tool
 from langchain.agents import create_agent
 from langchain_core.messages import HumanMessage
 from langchain_tavily import TavilySearch
-from openai import api_key
 
 load_dotenv()
 
-tavily_search_tool = TavilySearch(
+
+search = TavilySearch(
     max_results=5,
     topic="general"
 )
-
-@tool
-def search(query: str) -> str:
+tools = [search]
+class Source(BaseModel):
     """Search the internet for information using Tavily."""
-    print(f"Searching for: {query}")
-    return tavily_search_tool.invoke({"query": query})
+    url:str = Field(description="The URL of the search result")
+
+class AgentRespond(BaseModel):
+    """Structured response by the agent."""
+    answer:str = Field(description="The messages from the agent")     
+    sources:List[Source] = Field(default_factory=list, description="The sources used by the agent to answer the question")
 
 
 
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0)
 
-tools = [search]
 
 agent = create_agent(
     model=llm,
-    tools=tools
+    tools=tools,response_format=AgentRespond
 )
 
 def main():
     result = agent.invoke({
-        "messages": [HumanMessage(content="Search 3 Job postings for an AI engineer in Canada and summarize the results with the job link, only get jobs from Linkedin.com.")]
+        "messages": [HumanMessage(content="""Find 3 LinkedIn job postings for AI Engineer roles in Canada.
+                     
+Requirements:
+- Only return LinkedIn job listing URLs
+- URLs must follow this format:
+  https://www.linkedin.com/jobs/view/...
+- Summarize the job title, company, and location""")]
     })
 
-    final_answer = result["messages"][-1].content
-    print(final_answer)
+    print(result["structured_response"])
 
 
 # def main():
